@@ -1,4 +1,7 @@
 
+import re
+
+from krakenhelper.helper import Url, Date, UUID
 
 
 class Schema:
@@ -6,6 +9,9 @@ class Schema:
         self.record_type = record_type
         self.record_id = record_id
         self.record = record
+        self.metadata = None
+
+
         self.main_record = None
         self.record_list = None
 
@@ -17,10 +23,122 @@ class Schema:
             if isinstance(self.record, dict):
                 self.record_type = self.record.get('@type', None)
 
+        return self.record_type
+
+
     def _get_record_id(self):
         if self.record:
             if isinstance(self.record, dict):
                 self.record_id = self.record.get('@id', None)
+
+        
+        # Assign from record_type if exist
+        if not self.record_id:
+            if self.record_type == 'schema:website':
+                self.record_id = self.get_url_id()
+            
+            elif self.record_type == 'schema:webpage':
+                self.record_id = self.get_url_id()
+            
+            elif self.record_type == 'schema:videoobject':
+                self.record_id = self.get_contenturl_id()
+            
+            elif self.record_type == 'schema:imageobject':
+                self.record_id = self.get_contenturl_id()
+
+            elif self.record_type == 'schema:person':
+                self.record_id = self.get_email()
+
+            elif self.record_type == 'schema:organization':
+                self.record_id = self.get_domain()
+
+        return self.record_id
+
+
+    def get(self):
+
+
+        return self.record
+
+
+    def post(self, record = None): 
+
+        if record:
+            self.record = record
+
+
+        record, record_list = self.get_main_record()
+
+
+        record_id_map = {}
+        for i in record_list:
+            sub_record = Schema()
+
+            
+            sub_record._post_item(i)
+
+
+
+
+        # Verify if record is valid
+        if not self.get_valid():
+            return None
+
+        # Search for record if no id
+        if not self.record_id:
+            self.search_record_id()
+
+
+        # Retrieve record
+        if self.record_id:
+            ref_record = Schema(self.record_type, self.record_id)
+            ref_record.get()
+
+
+
+        # Assign uuid if no id
+        if not self.record_id:
+            u = UUID()
+            self.record_id = u.get()
+        
+
+        return self.record_id
+
+    def _post_item(self):
+
+        # Verify if record is valid
+        if not self.get_valid():
+            return None
+
+        # Search for record if no id
+        if not self.record_id:
+            self.search_record_id()
+
+
+        # Retrieve record
+        if self.record_id:
+            ref_record = Schema(self.record_type, self.record_id)
+            ref_record.get()
+
+
+        # Assign uuid if no id
+        if not self.record_id:
+            u = UUID()
+            self.record_id = u.get()
+
+
+
+
+    def pre_processing(self): 
+
+        if not self.record_id:
+            self.search_record_id()
+
+        if not self.record_id:
+            u = UUID()
+            self.record_id = u.get()
+
+
 
 
     def get_valid(self, record = None):
@@ -86,6 +204,12 @@ class Schema:
         return self.ref_id
 
 
+    def search_record_id(self):
+        # Search record in database if exist, returns record-id if so
+
+        return self.record_id
+
+
     def get_main_record(self, record = None):
         """
         Repleaces sub_records with their ref_id reference, returning a simpler record
@@ -115,10 +239,17 @@ class Schema:
             if not record.get('@type', None):
                 return record
 
+            
             # Assign itself as parent
             schema = Schema()
             record_ref_id = schema.get_ref_id(record)
-            print('rec1', record_ref_id)
+            
+            # Assign temp id if no record_id
+            if not schema.record_id:
+                u = UUID()
+                schema.record_id = 'temp' + u.get()
+                record_ref_id = schema.get_ref_id()
+
 
             # Iterate through keys
             new_record = {}
@@ -140,6 +271,7 @@ class Schema:
 
             else:
                 # Return record
+                self.record_list.append(new_record)
                 return new_record
 
 
@@ -164,11 +296,12 @@ class Schema:
             else:
                 new_record = record
 
+
             return new_record
 
 
         self.main_record = _process_record(self.record)
-        return self.main_record
+        return self.main_record, self.record_list
 
 
 
@@ -296,3 +429,77 @@ class Schema:
             ]
         }
         return self.record
+
+
+    def get_url(self):
+        return self.record.get('schema:contenturl', None)
+
+    def get_url_id(self):
+        ### give web safe url for id purposes
+
+        self.record_id = self.get_url()
+
+        if self.record_id:
+            self.record_id = self.record_id.replace("https://", "")
+            self.record_id = self.record_id.replace("http://", "")
+            self.record_id = self.record_id.replace("www.", "")
+            self.record_id = self.record_id.rstrip("/")
+
+            self.record_id = re.sub("[^0-9a-zA-Z]+", "_", self.record_id)
+
+        return self.record_id
+
+
+
+    def get_contenturl(self):
+        return self.record.get('schema:contenturl', None)
+
+
+
+
+    def get_contenturl_id(self):
+        self.record_id = self.get_contenturl()
+
+        if self.record_id:
+            self.record_id = self.record_id.replace("https://", "")
+            self.record_id = self.record_id.replace("http://", "")
+            self.record_id = self.record_id.replace("www.", "")
+            self.record_id = self.record_id.rstrip("/")
+
+            self.record_id = re.sub("[^0-9a-zA-Z]+", "_", self.record_id)
+
+        return self.record_id
+
+    def get_domain(self):
+        u = Url()
+        return u.get_domain(self.get_url())
+
+
+    def get_metadata(self):
+
+        if not self.metadata:
+            self._generate_metadata()
+        
+        return self.metadata
+
+
+
+    def _generate_metadata(self):
+
+        d = Date()
+
+        datasource = self.record.get('kraken:datasource', {})
+        
+        # Define base metadata
+
+        for i in self.record:
+            self.metadata[i]['kraken_created_date'] = self.record.get('kraken:created_date', None)
+
+            self.metadata[i]['kraken_modified_date'] = self.record.get('kraken:modified_date', None)
+            
+            self.metadata[i]['datasource_created_date'] = self.record.get('kraken:datasource_created_date', None)
+
+            self.metadata[i]['datasource_modified_date'] = self.record.get('kraken:datasource_modified_date', None)
+
+            self.metadata[i]['credibility'] = self.record.get('kraken:credibility', 0)
+
