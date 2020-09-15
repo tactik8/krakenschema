@@ -1,8 +1,14 @@
 
 import re
 
-from krakenhelper.helper import Url, Date, UUID
 
+from krakenhelper.helper import Url, Date, UUID
+from krakenhelper.cache import Cache
+from krakenhelper.db import Db
+
+
+cache = Cache()
+db = Db()
 
 class Schema:
     def __init__(self, record_type = None, record_id = None, record = None):
@@ -11,12 +17,26 @@ class Schema:
         self.record = record
         self.metadata = None
 
+        # Reference record from db
+        self.ref_record = None
+        self.ref_metadata = None
+
+        # Delta with ref record
+        self.delta_record = None
+        self.delta_metadata = None
+
 
         self.main_record = None
         self.record_list = None
 
         self.valid = None
         self.ref_id = None
+
+        if self.record:
+            self._get_record_type()
+            self._get_record_id()
+
+
     
     def _get_record_type(self):
         if self.record:
@@ -34,6 +54,7 @@ class Schema:
         
         # Assign from record_type if exist
         if not self.record_id:
+
             if self.record_type == 'schema:website':
                 self.record_id = self.get_url_id()
             
@@ -51,6 +72,15 @@ class Schema:
 
             elif self.record_type == 'schema:organization':
                 self.record_id = self.get_domain()
+            
+            elif self.record_type == 'schema:action':
+                u = UUID()
+                self.record_id = u.get()
+
+            elif self.record_type == 'schema:message':
+                u = UUID()
+                self.record_id = u.get()
+
 
         return self.record_id
 
@@ -58,75 +88,257 @@ class Schema:
     def get(self):
 
 
+        # Get from cache
+        self.record, self.metadata = cache.get(self.record_type, self.record_id)
+
+        if not self.record:
+            # Get from db
+            path = self.record_type + '/' + self.record_id
+            db_record = db.get(path)
+            self.record = db_record.get('data')
+            self.metadata = db_record.get('metadata')
+
         return self.record
 
 
+    def _get_ref(self):
+        """ 
+        Retrieves the reference schema from database
+
+        Parameters
+        ----------
+        self (class): The record  
+
+        Returns
+        -------
+
+        """
+
+        self.ref_record = {}
+        self.ref_metadata = {}
+
+
+
     def post(self, record = None): 
+        """ 
+        Post record and sub records in database
+
+        Algorithm flatten record, producing a list of records. It then tries to set a record_id, find one and fnially set uuid as record_id if it cannot find one. It then calculates the delta between the new record and what is currently in the db. Finally, iit writes all new records at once. 
+
+        Parameters
+        ----------
+        self (class): The record  
+
+        Returns
+        -------
+
+        """
 
         if record:
             self.record = record
 
-
+        # Flatten record, producing a list with all sub records
         record, record_list = self.get_main_record()
 
 
-        record_id_map = {}
+        # Convert to schema_list
+        new_record_list = []
         for i in record_list:
+            schema = Schema(None, None, i)
+            new_record_list.append(schema)
+        record_list = new_record_list
+
+
+        # Assign record id for list of record_list
+        key_map = {}
+        for i in record_list:
+
             sub_record = Schema()
+            original_record_id = i.record_id
 
+            # Assign record_id
+            i._get_record_id(i)
             
-            sub_record._post_item(i)
+            # Search records if not found
+            if not i.record_id:
+                i.search_record_id()
+
+            # Add in ref dict if starts with temp
+            if original_record_id.startswith('temp'):
+                key_map[original_record_id] = i.record_id
 
 
+        # Cycle through records to replace temp id
+        for i in record_list:
+            for old_value in key_map:
+                key = '@id'
+                new_value = key_map[old_value]
+                i.replace_value(i, key, old_value, new_value)
 
 
-        # Verify if record is valid
-        if not self.get_valid():
-            return None
-
-        # Search for record if no id
-        if not self.record_id:
-            self.search_record_id()
-
-
-        # Retrieve record
-        if self.record_id:
-            ref_record = Schema(self.record_type, self.record_id)
-            ref_record.get()
-
-
-
-        # Assign uuid if no id
-        if not self.record_id:
-            u = UUID()
-            self.record_id = u.get()
+        # Retrieve delta record
+        for i in record_list:
+            i._get_delta()
         
+        # Save records
+        for i in record_list: 
+            i._post_delta()
+
 
         return self.record_id
 
-    def _post_item(self):
+    def _post_delta(self):
+        """ 
+        Post the delta record to db.
 
-        # Verify if record is valid
-        if not self.get_valid():
-            return None
+        Parameters
+        ----------
 
-        # Search for record if no id
-        if not self.record_id:
-            self.search_record_id()
+        Returns
+        -------
+        itself
+
+        """
+
+        # Verify if delta empty
+        if not self.delta_record:
+            return
+        
+        # Post datapoint
+        u = UUID()
+        path = self.record_type + '/' + self.record_id + '/datapoints/' + u.get()
+
+        db_record = {
+            'data': self.delta_record,
+            'metadata': self.delta_metadata
+        }
+
+        db.update(path, db_record)
 
 
-        # Retrieve record
-        if self.record_id:
-            ref_record = Schema(self.record_type, self.record_id)
-            ref_record.get()
+
+        # Post update to main record
+        path = self.record_type + '/' + self.record_id
+
+        db_record = {
+            'data': self.delta_record,
+            'metadata': self.delta_metadata
+        }
+
+        db.update(path, db_record)
 
 
-        # Assign uuid if no id
-        if not self.record_id:
-            u = UUID()
-            self.record_id = u.get()
+        # Update cache
+        cache.update(self.record_type, self.record_id, self.delta_record, self.delta_metadata)
 
 
+    def _get_delta(self):
+        """ 
+        Compare two schema and return the delta with the best criteria (credibility, date, etc)
+
+        Parameters
+        ----------
+        self (class): The record challenging 
+        ref_record (class): The record currently best
+
+        Returns
+        -------
+        class : A new class object with the delta  
+        """
+
+        for key in self.record:
+            value1 = self.record.get(key, None)
+            metadata1 = self.metadata.get(key, None)
+
+            value2 = self.ref_record.get(key, None)
+            metadata2 = self.ref_metadata.get(key, None)
+
+            self.delta_record[key], self.delta_.metadata[key] = self._get_diff_key(value1, metadata1, value2, metadata2)
+
+        return 
+
+    def _get_ref(self):
+        """ 
+        Retrieves a reference schema from database
+
+        Parameters
+        ----------
+        self (class): The record challenging 
+
+        Returns
+        -------
+        class : A new class object with the delta  
+        """
+
+        self.ref_record = {}
+        self.ref_metadata = {}
+
+        # Check in cache
+        self.ref_record, self.ref_metadata = cache.get(self.record_type, self.record_id)            
+
+        if not self.ref_record:
+            # Check in db
+            record = {}
+
+
+
+
+    def _get_diff_key(self, value1, metadata1, value2, metadata2):
+
+        # Handle empty values
+        if not value1 and not value2:
+            return None, None
+        if not value2:
+            return value1, metadata1
+        if not value1:
+            return value2, metadata2
+
+        # Iterate through critera
+        criteria = ['kraken:credibility', 'kraken:created_date']
+        for c in criteria:
+            c1 = metadata1.get(c, None)
+            c2 = metadata2.get(c, None)
+
+            if not c1:
+                continue
+            elif not c2:
+                return value1, metadata1
+            elif c1 > c2:
+                return value1, metadata1
+
+        # Finally return none if no change
+        return None, None
+
+
+    def replace_value(self, record, key, old_value, new_value):
+        
+        self.record = record
+    
+
+        def replace_value(record, key, old_value, new_value):
+            if isinstance(record, str):
+                new_record = record
+
+            elif isinstance(record, dict):
+                new_record = {}
+                for k in record:
+                    new_record[k] = replace_value(record[k], key, old_value, new_value)
+                
+                if new_record.get(key, None) == old_value:
+                    new_record[key] = new_value
+
+            elif isinstance(record, list):
+                new_record = []
+                for i in record:
+                    new_record.append(replace_value(i, key, old_value, new_value))
+            else:
+                new_record = record
+
+            print(new_record)
+            return new_record
+
+        self.record = replace_value(self.record, key, old_value, new_value)
+        return self.record
 
 
     def pre_processing(self): 

@@ -130,9 +130,9 @@ pytz = "^2020.1"
 validators = "^0.18.1"
 
 [package.source]
-reference = "9dbc4cc3f09b319e0480a2947c0e3ab93b2630f8"
+reference = "fdccc185b947f25faba964e3d034c7f5d6d57e97"
 type = "git"
-url = "https://github.com/tactik8/kraken_helper"
+url = "https://github.com/tactik8/krakenhelper"
 [[package]]
 category = "main"
 description = "Safely add untrusted strings to HTML/XML markup."
@@ -196,7 +196,7 @@ dev = ["pytest", "pytest-timeout", "coverage", "tox", "sphinx", "pallets-sphinx-
 watchdog = ["watchdog"]
 
 [metadata]
-content-hash = "b9f926ec2ae01dc992608563c1cb9d4599b97a98d31f191f1de12f9438ca90b1"
+content-hash = "85807553789d45a748cabd71431249cac49788b2b810a5010b55311a3c9b6874"
 python-versions = "^3.8"
 
 [metadata.files]
