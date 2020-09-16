@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='krakenschema',
-    version='0.1',
+    version='0.1.1',
     description='kraken schema module',
     author='Tactik8',
     author_email='admin@tactik8.com',
