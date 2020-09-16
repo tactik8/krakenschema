@@ -79,8 +79,14 @@ class Cache:
         
         # Assign new key/values
         for key in record:
-            self.cache[record_type][record_id]['record'] = record[key]
-            self.cache[record_type][record_id]['metadata'] = metadata[key]
+            if key in ['@type', '@id']:
+                continue
+            if record.get(key, None):
+                self.cache[record_type][record_id]['record'][key] = record.get(key, None)
+            if metadata.get(key, None):
+                self.cache[record_type][record_id]['metadata'][key] = metadata.get(key, None)
+
+
 
 
     def search(self, record_type, key, value):

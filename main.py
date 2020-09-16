@@ -1,9 +1,13 @@
 import requests
 import json
-from tests_scripts.cache_test import Tests
+from krakenschema.schema import Schema
 
 
-tests = Tests()
+print(' -------- schema --------')
 
-tests.test_post()
-tests.test_replace_value()
+s = Schema()
+
+test_record = s.get_test()
+a, b = s.get_main_record(test_record)
+print(a)
+

@@ -2,8 +2,10 @@
 from krakenschema.cache import Cache
 from krakenschema.schema import Schema
 
+import inspect
 
-class Tests:
+
+class Tests_cache:
     def test_post(self):
         cache = Cache()
 
@@ -12,50 +14,84 @@ class Tests:
         input_record_type = input_record.get('@type', None)
         input_record_id = input_record.get('@id', None)
 
-        cache.post(input_record)
-        output_record = cache.get(input_record_type, input_record_id)
+        cache.post(input_record_type, input_record_id, input_record, None)
+        output_record, metadata = cache.get(input_record_type, input_record_id)
+
+        fn_name = inspect.stack()[0][3]
 
         if input_record == output_record:
-            print('pass')
+            print(fn_name, 'pass')
         else: 
-            print('fail')
+            print(fn_name, 'fail')
 
 
-    def test_replace_value(self):
+            
+    def test_update(self):
+        cache = Cache()
+        record_type = 'schema:test'
+        record_id = 'test_post_02'
 
-        input_record = {
-            'key1': 'value1',
-            'key2': 'value2',
-            'key3': {
-                'key31': 'value31',
-                'key32': 'value32'
-            },
-            'key4': [
-                {'key41': 'value41'},
-                {'key42': 'value42'}
-            ]
+        path = 'schema:test/test_post_02'
+        
+        record_original = {
+                '@type': 'schema:test',
+                '@id': 'test_post_02',
+                'schema:name': 'test post 02',
+                'schema:url': 'https://www.test.com',
+                'schema:email': 'sd@sd.com'
+            }
+        metadata_original= {
+            'schema:name': {
+                'kraken:credibility': 50,
+                'kraken:id': 'test id'
+                }
+            }
 
+        record_delta = {
+                '@type': 'schema:test',
+                '@id': 'test_post_02',
+                'schema:name': 'test post TEST',
+                'schema:test': 'test'
+            }
+        
+        metadata_delta= {
+            'schema:name': {
+                'kraken:credibility': 60,
+                'kraken:id': 'test id'
+                }
+            }
+        
+
+        record_reference = {
+                '@type': 'schema:test',
+                '@id': 'test_post_02',
+                'schema:name': 'test post TEST',
+                'schema:test': 'test',
+                'schema:url': 'https://www.test.com',
+                'schema:email': 'sd@sd.com'
+            }
+
+        metadata_reference= {
+            'schema:name': {
+                'kraken:credibility': 60,
+                'kraken:id': 'test id'
+            }
         }
 
-        expected_record = {
-                        'key1': 'value1',
-            'key2': 'value2',
-            'key3': {
-                'key31': 'value31',
-                'key32': 'valueNEW',
-            },
-            'key4': [
-                {'key41': 'value41'},
-                {'key42': 'value42'}
-            ]
 
-        }
+        cache.post(record_type, record_id, record_original, metadata_original)
+        cache.update(record_type, record_id, record_delta, metadata_delta)
 
-        schema = Schema()
-        output_record = schema.replace_value(input_record, 'key32', 'value32', 'valueNEW' )
+        new_record, new_metadata = cache.get(record_type, record_id)
+        
+        fn_name = inspect.stack()[0][3]
 
-        if output_record == expected_record:
-            print('pass')
+        if record_reference == new_record and metadata_reference == new_metadata:
+            print(fn_name, 'pass')
         else: 
-                print('fail')
-                print(output_record)
+            fn_name = inspect.stack()[0][3]
+            print('---')
+            print(fn_name, 'fail')
+            print(new_metadata)
+            print(metadata_reference)
+            print('---')

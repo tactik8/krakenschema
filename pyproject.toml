@@ -10,6 +10,8 @@ glom = "^20.8.0"
 flatten-dict = "^0.3.0"
 validators = "^0.18.1"
 krakenhelper = { git = "https://github.com/tactik8/krakenhelper"}
+firebase-admin = "^4.4.0"
+pytest = "^6.0.2"
 
 [build-system]
 requires = ["poetry>=0.12"]
